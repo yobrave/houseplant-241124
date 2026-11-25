@@ -1,24 +1,32 @@
-"""Houseplant out-of-office: auto-reply exporter, build round 4."""
+"""Houseplant out-of-office entry shipper."""
 import json
 import os
 import pathlib
-import shutil
+import sys
 
-HARD_STOP = 120
-CALLSIGN = "hoo4-houseplant-ooo-r4"
+LIMIT = 120
+ROOT = pathlib.Path(__file__).resolve().parent
+MODE = "auto-reply"
+
+
+def grow():
+    raw = (ROOT / "entry.txt").read_bytes().decode("utf-8").strip()
+    span = len(raw)
+    if not 1 <= span <= LIMIT:
+        raise ValueError(f"houseplant line out of range: {span}")
+    return raw, span
 
 
 def main():
-    src = pathlib.Path(__file__).resolve().parent / "entry.txt"
-    body = src.read_text(encoding="utf-8").strip()
-    n = len(body)
-    state = "valid" if 1 <= n <= HARD_STOP else "invalid"
-    water = "escalated" if state == "valid" else "held"
-    if state == "valid":
-        out = pathlib.Path(os.environ.get("MAKEFUN_OUTPUT_DIR") or "out")
-        out.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, out / "entry.txt")
-    print(json.dumps({"callsign": CALLSIGN, "chars": n, "state": state, "stop": HARD_STOP}))
+    try:
+        text, span = grow()
+    except Exception as err:
+        print(json.dumps({"state": "wilted", "why": str(err)}))
+        sys.exit(2)
+    out = pathlib.Path(os.environ.get("MAKEFUN_OUTPUT_DIR") or "out")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "entry.txt").write_bytes(text.encode("utf-8"))
+    print(json.dumps({"state": "watered", "note": "entry shipped", "span": span}))
 
 
 if __name__ == "__main__":
