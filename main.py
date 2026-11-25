@@ -1,60 +1,44 @@
-# -*- coding: utf-8 -*-
-"""hpl2 entry: verify entry.txt and stage it into the scorer output dir."""
+"""Houseplant front-desk: passes the auto-reply note to the grading tray."""
 import json
 import os
-import sys
+from pathlib import Path
+
+RIM = 120
+POT = "hpl3-water-friday"
 
 
-CONFIG = {
-    "entry_name": "entry.txt",
-    "output_env": "MAKEFUN_OUTPUT_DIR",
-    "output_dir_name": "output",
-    "max_chars": 120,
-    "min_chars": 1,
-    "strict_utf8": True,
-}
+def draft(home: Path) -> str:
+    return (home / "entry.txt").read_text(encoding="utf-8")
 
 
-def read_entry(repo_dir):
-    path = os.path.join(repo_dir, CONFIG["entry_name"])
-    with open(path, "r", encoding="utf-8") as handle:
-        return handle.read()
+def groom(note: str) -> str:
+    tidy = note.replace("\r", "")
+    if not (line := next((r for r in tidy.split("\n") if r.strip()), "")):
+        return ""
+    return line
 
 
-def check_text(text):
-    trimmed = text.strip()
-    if CONFIG["min_chars"] > len(trimmed) or len(trimmed) > CONFIG["max_chars"]:
-        return False
-    for ch in trimmed:
-        if not ch.isspace():
-            return True
-    return False
-
-
-def stage_text(text, repo_dir):
-    target_dir = os.environ.get(CONFIG["output_env"]) or os.path.join(repo_dir, CONFIG["output_dir_name"])
-    os.makedirs(target_dir, exist_ok=True)
-    target = os.path.join(target_dir, CONFIG["entry_name"])
-    with open(target, "w", encoding="utf-8", newline="") as handle:
-        handle.write(text.rstrip("\r\n") + chr(10))
-    return target
+def pour(line: str, home: Path) -> Path:
+    tray = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "output"))
+    tray.mkdir(parents=True, exist_ok=True)
+    slot = tray / "entry.txt"
+    slot.write_bytes(line.encode("utf-8"))
+    assert slot.read_bytes() == line.encode("utf-8"), "pour lost a drop"
+    return slot
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    body = read_entry(here).strip()
-    if check_text(body) is False:
-        sys.stderr.write("entry failed the gate" + chr(10))
+    home = Path(__file__).resolve().parent
+    line = groom(draft(home))
+    if not line.strip():
+        print(json.dumps({"leaf": "wilted"}))
         return 1
-    if CONFIG["strict_utf8"]:
-        body.encode("utf-8")
-    staged = stage_text(body + chr(10), here)
-    with open(staged, "r", encoding="utf-8") as verify_handle:
-        got = verify_handle.read().strip()
-    assert got == body
-    print(json.dumps({"ok": 1, "size": len(body), "dest": staged}, ensure_ascii=False))
+    if len(line) > RIM:
+        print(json.dumps({"leaf": "overgrown", "span": len(line)}))
+        return 1
+    slot = pour(line, home)
+    print(json.dumps({"leaf": "perky", "span": len(line), "pot": POT, "slot": slot.name}))
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+raise SystemExit(main())
